@@ -7,7 +7,7 @@
  Y888P  ~Y8888P' Y888888P      888888D      Y88888P ~Y8888P' YP   YP  CONVERTER 
 ]=]
 
--- Instances: 76 | Scripts: 15 | Modules: 1 | Tags: 0
+-- Instances: 78 | Scripts: 16 | Modules: 1 | Tags: 0
 local G2L = {};
 
 -- StarterGui.GUI
@@ -20,14 +20,13 @@ G2L["1"]["ZIndexBehavior"] = Enum.ZIndexBehavior.Sibling;
 G2L["2"] = Instance.new("TextButton", G2L["1"]);
 G2L["2"]["TextWrapped"] = true;
 G2L["2"]["BorderSizePixel"] = 0;
-G2L["2"]["TextSize"] = 14;
-G2L["2"]["TextScaled"] = true;
+G2L["2"]["TextSize"] = 30;
 G2L["2"]["TextColor3"] = Color3.fromRGB(0, 0, 0);
 G2L["2"]["BackgroundColor3"] = Color3.fromRGB(182, 186, 186);
 G2L["2"]["FontFace"] = Font.new([[rbxasset://fonts/families/SourceSansPro.json]], Enum.FontWeight.Bold, Enum.FontStyle.Normal);
-G2L["2"]["Size"] = UDim2.new(0, 54, 0, 54);
+G2L["2"]["Size"] = UDim2.new(0, 201, 0, 54);
 G2L["2"]["BorderColor3"] = Color3.fromRGB(0, 0, 0);
-G2L["2"]["Text"] = [[:D]];
+G2L["2"]["Text"] = [[Sigma Jello 5.0]];
 G2L["2"]["Name"] = [[OpenClose]];
 G2L["2"]["Position"] = UDim2.new(0.65636, 0, 0, 0);
 
@@ -277,7 +276,7 @@ G2L["24"]["Size"] = UDim2.new(0, 110, 0, 41);
 G2L["24"]["BorderColor3"] = Color3.fromRGB(0, 0, 0);
 G2L["24"]["Text"] = [[Phase]];
 G2L["24"]["Name"] = [[noclip]];
-G2L["24"]["Position"] = UDim2.new(0.05283, 0, 0.53422, 0);
+G2L["24"]["Position"] = UDim2.new(0.03974, 0, 0.53858, 0);
 
 
 -- StarterGui.GUI.Frame.noclip.UICorner
@@ -615,6 +614,16 @@ G2L["4b"] = Instance.new("LocalScript", G2L["4a"]);
 -- StarterGui.GUI.LocalScript
 G2L["4c"] = Instance.new("LocalScript", G2L["1"]);
 
+
+
+-- StarterGui.GUI.Resources
+G2L["4d"] = Instance.new("Folder", G2L["1"]);
+G2L["4d"]["Name"] = [[Resources]];
+
+
+-- StarterGui.GUI.Resources.LaserScript
+G2L["4e"] = Instance.new("LocalScript", G2L["4d"]);
+G2L["4e"]["Name"] = [[LaserScript]];
 
 
 -- Require G2L wrapper
@@ -1652,11 +1661,212 @@ task.spawn(C_4b);
 -- StarterGui.GUI.LocalScript
 local function C_4c()
 local script = G2L["4c"];
-	while true do
-		wait(0.25)
-		script.Parent = game.Players.LocalPlayer.PlayerGui
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+	local backpack = LocalPlayer.Backpack
+	local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() -- Get character, or wait for it to load
+	local RunService = game:GetService("RunService")
+	local UserInputService = game:GetService("UserInputService")
+	local notifyAsync = require(script.Parent:WaitForChild("Notifies"):WaitForChild("Notification"))
+	
+	local hyperlaserGun = backpack:FindFirstChild("HyperlaserGun") or character:FindFirstChild("HyperlaserGun")
+	local classicsword = backpack:FindFirstChild("ClassicSword") or character:FindFirstChild("ClassicSword")
+	
+	-- Removed MAX_REACH_DISTANCE as you want infinite reach
+	local HIT_TELEPORT_OFFSET = Vector3.new(0, 0, -1) -- Small offset for handle to ensure contact.
+	local VISIBLE_SWING_RANGE = 8 -- Normal range where sword can visually hit (e.g., 8 studs)
+	
+	if hyperlaserGun then
+		notifyAsync.Notify("Laser Gun Detected! Injecting laser hack...", 3)
+	
+		if hyperlaserGun:FindFirstChild("ToolScript") then
+			hyperlaserGun:FindFirstChild("ToolScript"):Destroy()
+	
+			local fakescript = script.Parent.Resources:WaitForChild("LaserScript")
+			local newfakescript = fakescript:Clone()
+			newfakescript.Parent = hyperlaserGun
+	
+			local starter = game:GetService("StarterPack")
+			local newcopy = hyperlaserGun:Clone() -- Clone the existing found gun
+	
+			if starter:FindFirstChild("HyperlaserGun") then
+				starter:FindFirstChild("HyperlaserGun"):Destroy()
+				newcopy.Parent = starter
+				notifyAsync.Notify("Succesfully injected laser script!", 2)
+			else
+				notifyAsync.Notify("Could not inject fake laser script. (error 201)", 2)
+			end
+		else
+			notifyAsync.Notify("Could not inject fake laser script. (error 202)", 2)
+		end
+	end
+	
+	if classicsword then
+		notifyAsync.Notify("Classic Sword Detected! Activating Sword Hack...", 3)
+	
+		local isSwordEquipped = false
+		local swordBehaviorConnection = nil
+		local shakeDirection = 1 -- 1 for right, -1 for left
+		local shakeMagnitude = math.rad(3) -- 3 degrees in radians for rotation deviation
+	
+		local lastHitTime = 0 -- To debounce hits on the client side
+		local hitCooldown = 0.2 -- Adjust this to match sword swing/hit rate
+	
+		-- Function to find the closest enemy
+		local function findClosestEnemy()
+			local closestPlayer = nil
+			local shortestDistance = math.huge
+			local localCharacter = LocalPlayer.Character
+			if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return nil end
+			local localHRP = localCharacter.HumanoidRootPart
+	
+			for _, player in ipairs(Players:GetPlayers()) do
+				if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+					local enemyHRP = player.Character.HumanoidRootPart
+					local distance = (localHRP.Position - enemyHRP.Position).magnitude
+					if distance < shortestDistance then
+						shortestDistance = distance
+						closestPlayer = player
+					end
+				end
+			end
+			return closestPlayer
+		end
+	
+		-- Function to handle auto-aim, character rotation shake, and infinite reach
+		local function manageSwordBehavior()
+			if swordBehaviorConnection then
+				swordBehaviorConnection:Disconnect()
+			end
+	
+			swordBehaviorConnection = RunService.RenderStepped:Connect(function()
+				if isSwordEquipped and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+					local localHRP = LocalPlayer.Character.HumanoidRootPart
+					local swordHandle = classicsword:FindFirstChild("Handle")
+	
+					if not swordHandle then return end
+	
+					-- Find closest enemy and aim
+					local closestEnemy = findClosestEnemy()
+					local targetCFrame = localHRP.CFrame -- Default to current if no enemy
+	
+					if closestEnemy and closestEnemy.Character and closestEnemy.Character:FindFirstChild("HumanoidRootPart") then
+						local enemyHRP = closestEnemy.Character.HumanoidRootPart
+						local lookVector = (enemyHRP.Position - localHRP.Position).unit
+						lookVector = Vector3.new(lookVector.X, 0, lookVector.Z).unit -- Flatten Y-axis
+						targetCFrame = CFrame.new(localHRP.Position, localHRP.Position + lookVector)
+	
+						local distanceToEnemy = (localHRP.Position - enemyHRP.Position).magnitude
+	
+						-- === INFINITE REACH LOGIC (Handle Teleport Touch) ===
+						-- Condition: Mouse held down, cooldown passed
+						if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and (tick() - lastHitTime > hitCooldown) then
+							-- Only perform teleport-touch if outside normal swing range
+							if distanceToEnemy > VISIBLE_SWING_RANGE then -- Still prevents teleport if already close
+								local originalParent = swordHandle.Parent
+								local originalCFrame = swordHandle.CFrame
+	
+								swordHandle.Parent = workspace -- Temporarily unparent
+	
+								local targetHandleCFrame = enemyHRP.CFrame * CFrame.new(HIT_TELEPORT_OFFSET)
+	
+								swordHandle.CFrame = targetHandleCFrame
+								task.wait(0.01)
+								swordHandle.CFrame = originalCFrame
+	
+								swordHandle.Parent = originalParent
+							end
+							lastHitTime = tick() -- Update last hit time regardless of teleport or not
+						end
+					end
+	
+					-- Apply the subtle left/right rotation deviation to the *character*
+					shakeDirection = -shakeDirection
+					local deviatedCFrame = targetCFrame * CFrame.Angles(0, shakeMagnitude * shakeDirection, 0)
+					LocalPlayer.Character:SetPrimaryPartCFrame(deviatedCFrame)
+				else
+					if swordBehaviorConnection then
+						swordBehaviorConnection:Disconnect()
+						swordBehaviorConnection = nil
+					end
+				end
+			end)
+		end
+	
+		classicsword.Equipped:Connect(function()
+			isSwordEquipped = true
+			if LocalPlayer.Character then
+				manageSwordBehavior()
+			else
+				LocalPlayer.CharacterAdded:Wait()
+				manageSwordBehavior()
+			end
+		end)
+	
+		classicsword.Unequipped:Connect(function()
+			isSwordEquipped = false
+		end)
 	end
 end;
 task.spawn(C_4c);
+-- StarterGui.GUI.Resources.LaserScript
+local function C_4e()
+local script = G2L["4e"];
+	--Rescripted by Luckymaxer
+	
+	Tool = script.Parent
+	Handle = Tool:WaitForChild("Handle")
+	
+	Players = game:GetService("Players")
+	LocalPlayer = Players.LocalPlayer -- Get the local player
+	
+	ServerControl = Tool:WaitForChild("ServerControl")
+	ClientControl = Tool:WaitForChild("ClientControl")
+	
+	ClientControl.OnClientInvoke = (function(Mode, Value)
+		if Mode == "PlaySound" and Value then
+			Value:Play()
+		end
+	end)
+	
+	function InvokeServer(Mode, Value, arg)
+		pcall(function()
+			ServerControl:InvokeServer(Mode, Value, arg)
+		end)
+	end
+	
+	function Equipped(Mouse)
+		while Tool.Parent == LocalPlayer.Character do -- Keep looping while the tool is equipped
+			local closestPlayer = nil
+			local shortestDistance = math.huge
+	
+			-- Find the closest player
+			for _, player in ipairs(Players:GetPlayers()) do
+				if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+					local distance = (LocalPlayer.Character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).magnitude
+					if distance < shortestDistance then
+						shortestDistance = distance
+						closestPlayer = player
+					end
+				end
+			end
+	
+			if closestPlayer then
+				-- Aim at the closest player's HumanoidRootPart
+				InvokeServer("Click", true, closestPlayer.Character.HumanoidRootPart.Position)
+			end
+			wait() -- Adjust the wait time as needed (e.g., 0.05 for 20 shots per second)
+		end
+	end
+	
+	local function Unequipped()
+		-- This function will be called when the tool is unequipped.
+		-- The `while` loop in Equipped will automatically stop when the Tool.Parent changes.
+	end
+	
+	Tool.Equipped:connect(Equipped)
+	Tool.Unequipped:connect(Unequipped)
+end;
+task.spawn(C_4e);
 
 return G2L["1"], require;
